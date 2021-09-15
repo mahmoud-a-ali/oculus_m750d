@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2.7
 """
 Communication node to talk to the Oculus and send the processed information
 to a local network port for Dune to listen.
@@ -31,11 +31,11 @@ Author: Aldo Teran Espinoza <aldot@kth.se>
 """
 import socket
 import struct
-# import rospy
+import rospy
 import numpy as np
-# from sensor_msgs.msg import Image
+from sensor_msgs.msg import Image
 # from std_msgs.msg import Float64MultiArray
-# from cv_bridge import CvBridge
+from cv_bridge import CvBridge
 # from dynamic_reconfigure.server import Server
 # from oculus_sonar.cfg import OculusConfig
 
@@ -46,7 +46,8 @@ class OculusSonar:
     # Constant ports for Oculus comms
     UDP_PORT = 52102
     TCP_PORT = 52100
-    TCP_IP = '169.254.37.93'
+    # TCP_IP = '169.254.37.93'
+    TCP_IP = '192.168.2.10'
     # Constant port for detected edge
     TCP_OUT_PORT = 12345
 
@@ -59,7 +60,7 @@ class OculusSonar:
         self.tcp_sock = socket.socket(socket.AF_INET,
                                       socket.SOCK_STREAM)
         # self.tcp_sock.bind((self.TCP_IP, self.TCP_PORT))
-        self.tcp_ip = '169.254.37.93'
+        self.tcp_ip = '192.168.2.10'
 
         # Dynamic reconfigure server
         self.config = None
@@ -73,6 +74,12 @@ class OculusSonar:
 
         # Sonar image publisher
         self.count = 0
+
+        self.image_pub = rospy.Publisher("/sonar_image", Image, queue_size=10)
+
+
+
+
 
     def recv_udp_msg(self):
         """
@@ -180,11 +187,28 @@ class OculusSonar:
             return
 
         simple_ping = (list(struct.unpack('<ddddIbdHHIII', data[61:122])))
+        
+
+        image_msg = CvBridge().cv2_to_imgmsg(img, encoding="passthrough")
+        self.image_pub.publish(image_msg)
+        print ("")
+
+
+
+
+
 
 def main():
     """
     Main method for the ROS node.
     """
+
+    rospy.init_node('oculus node')
+    rospy.loginfo("Starting sonar image to oculus node...")
+    # rate = rospy.Rate(10)
+    # rospy.sleep(3.0)
+
+
     sonar = OculusSonar()
     fire_message = sonar.build_simplefire_msg(sonar.config)
     sonar.connect_tcp()
@@ -202,6 +226,7 @@ def main():
         # Send fire message
         sonar.send_tcp_msg(fire_message)
         data = sonar.recv_tcp_msg()
+        # print data
 
         # Disregard if dummy message is sent
         if len(data) < 100:
@@ -219,4 +244,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

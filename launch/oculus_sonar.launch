@@ -3,7 +3,7 @@
      reconfig server.-->
 
 	<!--IP and Port for the Oculus-->
-	<param name="OCULUS_IP" type="str" value="168.254.37.96" />
+	<param name="OCULUS_IP" type="str" value="192.168.2.10" />
 
 	<!--Oculus main node-->
     <node pkg="oculus_sonar" type="oculus_sonar_node.py" name="sonar_imager" output="screen"/>

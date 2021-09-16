@@ -34,7 +34,7 @@ import struct
 import rospy
 import numpy as np
 from sensor_msgs.msg import Image
-# from std_msgs.msg import Float64MultiArray
+from std_msgs.msg import Float64MultiArray
 from cv_bridge import CvBridge
 # from dynamic_reconfigure.server import Server
 # from oculus_sonar.cfg import OculusConfig
@@ -74,9 +74,8 @@ class OculusSonar:
 
         # Sonar image publisher
         self.count = 0
-
         self.image_pub = rospy.Publisher("/sonar_image", Image, queue_size=10)
-
+        self.ping_pub = rospy.Publisher("/simple_ping_result", Float64MultiArray, queue_size=10)
 
 
 
@@ -187,11 +186,19 @@ class OculusSonar:
             return
 
         simple_ping = (list(struct.unpack('<ddddIbdHHIII', data[61:122])))
-        
+        if self.count < 5 :
+            print(simple_ping)
+        # print('dim, img_offest: ', dim, '  ,  ', img_offset)
+        # print data.shape()
+
 
         image_msg = CvBridge().cv2_to_imgmsg(img, encoding="passthrough")
         self.image_pub.publish(image_msg)
-        print ("")
+        
+        ping_msg = Float64MultiArray()
+        ping_msg.data = simple_ping
+        self.ping_pub.publish(ping_msg)
+
 
 
 
@@ -215,7 +222,8 @@ def main():
 
     # Send message to boot sonar
     sonar.send_tcp_msg(fire_message)
-    # rospy.loginfo(sonar.recv_tcp_msg())
+    rospy.loginfo(sonar.recv_tcp_msg())
+    rospy.loginfo(" frq,  temp,  presure,  sound_vel, 0, 0, resolution, #ranges, #beams, img_offest, d_size, msg_size")
 
     while True:
 
@@ -226,7 +234,8 @@ def main():
         # Send fire message
         sonar.send_tcp_msg(fire_message)
         data = sonar.recv_tcp_msg()
-        # print data
+        # print("main: data shape")
+        # print data.shape()
 
         # Disregard if dummy message is sent
         if len(data) < 100:
@@ -240,6 +249,7 @@ def main():
         # Process, publish, clean, repeat.
         sonar.process_n_publish(data)
         data = ''
+
 
 
 if __name__ == "__main__":

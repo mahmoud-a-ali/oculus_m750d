@@ -108,8 +108,8 @@ class OculusSonar:
         return data
 
     def build_simplefire_msg(self, config,
-                             masterMode=1, pingRate=0,
-                             gamma=150, gain=0, range_m=1,
+                             masterMode=2, pingRate=2,
+                             gamma=100, gain=50, range_m=4,
                              vos=0, salinity=0):
         """
         Fetch the first part from the UDP config message and fill

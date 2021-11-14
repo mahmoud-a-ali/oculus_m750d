@@ -13,28 +13,12 @@ from std_msgs.msg import Float64MultiArray
 from cv_bridge import CvBridge
 import pdb
 
-
-
-# from skimage import color
-from dynamic_reconfigure.server import Server
-from oculus_sonar.cfg import ImgThresholdConfig
-
-
 __license__ = "MIT"
 __author__ = "Aldo Teran Espinoza"
 __author_email__ = "aldot@kth.se"
 __status__ = "Development"
 
-
-def callback(config, level):
-    rospy.loginfo("""Reconfigure Request: {clh_tile_size}, {clh_clp_lmt},{cny_min_thrshld}, {cny_max_thrshld}, 
-        {cny_l2g}, {mrphlgy_krnl}, {Mrphlgcl_sel}, {check}""".format(**config))
-    
-    return config
-
-
-
-class Image_handler:
+class ImageConverter:
     """
     Class to handle Sonar image.
     """
@@ -45,12 +29,17 @@ class Image_handler:
         """
         # TODO: get this as a rosparam
         self.publish_edges = True
+        self.publish_pointcloud = False
+
+        self.udp_socket = socket.socket(socket.AF_INET,
+                                        socket.SOCK_DGRAM)
 
         # TODO: Which approach is better?
         self.sonar_result = {
             "image_msg" : None,
             "ping_result" : None,
             "image_array" : None
+
         }
 
         # Image processing parameters
@@ -63,14 +52,20 @@ class Image_handler:
 
         self.bridge = CvBridge()
 
-        self.processed_img_pub = rospy.Publisher("/processed_image", Image, queue_size=1)
-        self.clh_img_pub = rospy.Publisher("/clh_image", Image, queue_size=1)
-        self.cny_img_pub = rospy.Publisher("/cny_image", Image, queue_size=1)
-        self.mrphlgy_img_pub = rospy.Publisher("/mrphlgy_image", Image, queue_size=1)
+        self.sonar_image_topic = "/sonar_image"
+        self.sonar_ping_topic = "/simple_ping_result"
+        # self.sonar_image_topic = rospy.get_param("sonar_image_topic")
+        # self.sonar_ping_topic = rospy.get_param("sonar_ping_topic")
+        self.point_pub = rospy.Publisher("/sonar_points", PointCloud2, queue_size=1)
+        self.image_pub = rospy.Publisher("/processed_image", Image, queue_size=1)
 
         # Init Subscribers
-        rospy.Subscriber("/sonar_image", Image, self._sonar_image_callback)
-        rospy.Subscriber("/simple_ping_result", Float64MultiArray, self._sonar_ping_callback)
+        rospy.Subscriber(self.sonar_image_topic,
+                        Image,
+                        self._sonar_image_callback)
+        rospy.Subscriber(self.sonar_ping_topic,
+                        Float64MultiArray,
+                        self._sonar_ping_callback)
 
     def _init_bearings(self):
         """
@@ -90,12 +85,12 @@ class Image_handler:
     def _sonar_image_callback(self, image):
         # Get data, save in dictionary both message and image array
         self.sonar_result["image_msg"] = image
-        self.sonar_result["image_array"] = self.bridge.imgmsg_to_cv2(image)#, "mono8")
+        self.sonar_result["image_array"] = self.bridge.imgmsg_to_cv2(image, "mono8")
 
     def _sonar_ping_callback(self, data):
         self.sonar_result["ping_result"] = data
 
-    def process_sonar_image(self):
+    def proc_and_pub_pointcloud(self):
         """
         Build pointcloud and publish.
         """
@@ -103,13 +98,13 @@ class Image_handler:
 
         # Compute range and bearing maps using the ping result
         ping_result = self.sonar_result["ping_result"].data
-        resolution = ping_result[6] #it was 8
+        resolution = ping_result[8]
         [rows, cols] = np.shape(image)
         range_max = rows*resolution
         ranges = np.linspace(0,range_max, rows)
 
         # Check image frequency
-        high_freq = (ping_result[0] > 1000000) # it was 2
+        high_freq = (ping_result[2] > 1000000)
         if high_freq:
             # bearings = np.tile(self.high_freq_brgs, (rows, 1))
             bearing_mesh, range_mesh = np.meshgrid(self.high_freq_brgs, ranges)
@@ -119,55 +114,67 @@ class Image_handler:
 
         # TODO: Turn this into a gate (like the MBES)
         # Threshold image
-        clh_tile_size = rospy.get_param('~clh_tile_size', 5)
-        clh_clp_lmt = rospy.get_param('~clh_clp_lmt', 2.0)
-
-        cny_min_thrshld = rospy.get_param('~cny_min_thrshld', 210)
-        cny_max_thrshld = rospy.get_param('~cny_max_thrshld', 240)
-        cny_l2g = rospy.get_param('~cny_l2g', True)
-
-        mrphlgy_krnl = rospy.get_param('~mrphlgy_krnl', 5)
-        Mrphlgcl_sel = rospy.get_param('~Mrphlgcl_sel', 0)
-
         ret, image = cv2.threshold(image, self.image_threshold, 255, cv2.THRESH_TOZERO)
         # TODO: Maybe can tune parameters better, good results with current values.
-        # Detect edges with second Laplacian and processes the shit out of the image
-        clahe = cv2.createCLAHE(clipLimit=clh_clp_lmt, tileGridSize=(clh_tile_size, clh_tile_size))
-        clh_img = clahe.apply(image)
-        cny_img = cv2.Canny(clh_img, cny_min_thrshld, cny_max_thrshld, L2gradient=cny_l2g)
-        print("canny params:", cny_min_thrshld, cny_max_thrshld, cny_l2g)
-        print("calahe params:", clh_tile_size, clh_clp_lmt)
-        kernel = np.ones((mrphlgy_krnl, mrphlgy_krnl), np.uint8)
-        mrphlgy_img = cv2.morphologyEx(cny_img, cv2.MORPH_CLOSE, kernel)
-        edges = np.argmax(mrphlgy_img, axis=0)
+        # Detect edges with second Laplacian and processes out of the image
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(5,5))
+        image = clahe.apply(image)
+        image = cv2.Canny(image, 200, 255, L2gradient=True)
+        kernel = np.ones((5,5), np.uint8)
+        image = cv2.morphologyEx(image, cv2.MORPH_CLOSE, kernel)
+        edges = np.argmax(image, axis=0)
         cols = np.arange(0,len(edges),1)
         image_out = np.zeros(image.shape, np.uint8)
         image_out[edges,cols] = 255
 
-        # overlay edges on original image
-        # edge_raw_img = color.label2rgb(image_out, image)
+        # TODO: send the closest point's distance via UDP to Dune
+        min_distance = ranges[np.min(edges)]
+        self.udp_socket.sendto(min_distance, ("", 7777))
 
-        # if self.publish_edges:
-        # Publish processed edges as an image
-        image_msg = self.bridge.cv2_to_imgmsg(clh_img, encoding="passthrough")
-        self.clh_img_pub.publish(image_msg)
-        image_msg = self.bridge.cv2_to_imgmsg(cny_img, encoding="passthrough")
-        self.cny_img_pub.publish(image_msg)        
-        image_msg = self.bridge.cv2_to_imgmsg(mrphlgy_img, encoding="passthrough")
-        self.mrphlgy_img_pub.publish(image_msg)
-        image_msg = self.bridge.cv2_to_imgmsg(image_out, encoding="passthrough")
-        self.processed_img_pub.publish(image_msg)
+        if self.publish_edges:
+            # Publish processed edges as an image
+            image_msg = self.bridge.cv2_to_imgmsg(image_out, encoding="passthrough")
+            self.image_pub.publish(image_msg)
+
+        if self.publish_pointcloud:
+            # Publish processed edges as a 2D pointcloud
+            pointcloud_msg = self._build_pcl2_msg(image_out)
+            self.point_pub.publish(pointcloud_msg)
 
 
+    def _build_pcl2_msg(self, image):
+        [x_coords, y_coords] = self._polar_to_cartesian(image)
+        # Get rid of points in empty water
+        image = image.ravel()
+        edges = (image>0)
+        filtered_image = image[edges]
+        x_coords = x_coords.ravel()[edges]
+        y_coords = y_coords.ravel()[edges]
 
+        # Create cloud record array
+        cloud_recarray = np.rec.array([(x_coords),
+                                       (y_coords),
+                                       (np.zeros(len(x_coords))),
+                                       (filtered_image)],
+                                      dtype=[('x', 'f4'),
+                                             ('y', 'f4'),
+                                             ('z', 'f4'),
+                                             ('intensity', 'uint8')])
+
+        # Build pontcloud2 message with record array
+        pcl2_msg = ros_numpy.point_cloud2.array_to_pointcloud2(cloud_recarray,
+                                                               rospy.Time.now(),
+                                                               "/sonar")
+
+        return pcl2_msg
 
     def _polar_to_cartesian(self, image):
         ping_result = self.sonar_result["ping_result"].data
-        resolution = ping_result[6] # it was 4
+        resolution = ping_result[4]
         [rows, cols] = np.shape(image)
 
         # Check if image was taken in high frequency
-        high_freq = (ping_result[0] > 1000000) # it was 2
+        high_freq = (ping_result[2] > 1000000)
         if high_freq:
             bearings = np.tile(self.high_freq_brgs, (rows, 1))
         else:
@@ -181,6 +188,7 @@ class Image_handler:
 
         # Convert to to cartesian
         [x, y] = cv2.polarToCart(ranges, bearings, angleInDegrees=True)
+
         return [x, y]
 
 
@@ -190,17 +198,13 @@ def main():
     """
     rospy.init_node('image_to_pointcloud')
     rospy.loginfo("Starting sonar image to pointcloud node...")
-    converter = Image_handler()
-    srv = Server(ImgThresholdConfig, callback)
-    
-    rate = rospy.Rate(10)
-    rospy.sleep(1.0)
-    while not rospy.is_shutdown():
-        converter.process_sonar_image()
-        rate.sleep()
-    # rospy.spin()
+    converter = ImageConverter()
 
+    rate = rospy.Rate(10)
+    rospy.sleep(3.0)
+    while not rospy.is_shutdown():
+        converter.proc_and_pub_pointcloud()
+        rate.sleep()
 
 if __name__ == "__main__":
     main()
-

@@ -15,7 +15,7 @@ import pdb
 
 
 
-from skimage import color
+# from skimage import color
 from dynamic_reconfigure.server import Server
 from oculus_sonar.cfg import ImgThresholdConfig
 
@@ -40,7 +40,7 @@ def callback(config, level):
     # mrphlgy_krnl = config['groups']['parameters']['mrphlgy_krnl']
     # Mrphlgcl_sel = config['groups']['parameters']['Mrphlgcl_sel']
 
-    print("aha aha aha  aha aha aha  aha aha aha canny params:")#, cny_min_thrshld, cny_max_thrshld, cny_l2g)
+    print("canny params:")#, cny_min_thrshld, cny_max_thrshld, cny_l2g)
 
     return config
 

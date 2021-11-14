@@ -92,6 +92,8 @@ catkin_python_setup()
 find_package (catkin REQUIRED dynamic_reconfigure)
 generate_dynamic_reconfigure_options(
     cfg/img_threshold.cfg
+    cfg/oculus_sonar.cfg
+
     #...
     )
 # make sure configure headers are built before any node using them

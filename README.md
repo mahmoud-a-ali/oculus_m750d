@@ -64,8 +64,11 @@ roslaunch oculus_ros oculus_node.launch [bag_name] [record_bag]
 - bag_name : only valuable if record_bag value is true 
 
 ### sample output
+- raw sonar image ( the image represents a sonar image of concrete blocks in swiming pool)
 ![](./raw_sonar_image.png)
+- processed images usig OpenCV for detecting the surfaces(edges) facing the sonar
 ![](./edges_facing_sonar.png)
+- final output as 2D pointcloud
 ![](./edges_as_pcl.png)
 
 ### Limitation

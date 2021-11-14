@@ -64,8 +64,9 @@ roslaunch oculus_ros oculus_node.launch [bag_name] [record_bag]
 - bag_name : only valuable if record_bag value is true 
 
 ### sample output
-![](./sonar_image.png)
-![](./processed_image.png)
+![](./raw_sonar_image.png)
+![](./edges_facing_sonar.png)
+![](./edges_as_pcl.png)
 
 ### Limitation
 the final output is not a real 3D point coud as the sonar gives only a 2D information about the environment: azmith angle and distance to sensor, for more information check the  [oculus_m750d][] datasheet. The final output mimic the output of a 2d laser scanner

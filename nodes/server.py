@@ -1,10 +1,5 @@
-#!/usr/bin/env python2.7
-
-import rospy
-
 from dynamic_reconfigure.server import Server
 from oculus_sonar.cfg import OculusConfig
-
 
 from rospy_message_converter import message_converter
 from std_msgs.msg import String
@@ -17,15 +12,8 @@ from std_msgs.msg import Float64MultiArray
 def callback(config, level):
     rospy.loginfo("""Reconfigure Request: {masterMode}, {gamma}, {range_m},
                   {gain}, {vOfSound}, {salinity}, {pingRate}""".format(**config))
-    # print(config)
-    # print(level)
-    # print "configggggggggggg: "
-    # print config['range_m']
-    print config['groups']['parameters']
 
-    # cfg_msg = message_converter.convert_dictionary_to_ros_message('std_msgs/Float64MultiArray', config['groups']['parameters'])
-
-
+    # print config['groups']['parameters']
     return config
 
 if __name__ == "__main__":
@@ -43,4 +31,3 @@ if __name__ == "__main__":
 
 
     rospy.spin()
-

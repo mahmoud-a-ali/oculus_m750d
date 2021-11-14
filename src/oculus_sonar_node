@@ -41,7 +41,7 @@ from cv_bridge import CvBridge
 
 class OculusSonar:
     """
-    Class to handle Sonar shit.
+    Class to handle Sonar data.
     """
     # Constant ports for Oculus comms
     UDP_PORT = 52102
@@ -108,7 +108,7 @@ class OculusSonar:
         return data
 
     def build_simplefire_msg(self, config,
-                             masterMode=2, pingRate=2,
+                             masterMode=2, pingRate=0,
                              gamma=100, gain=50, range_m=4,
                              vos=0, salinity=0):
         """
@@ -157,7 +157,7 @@ class OculusSonar:
         Callback for the dynamic reconfigure server.
         """
         self.config = config
-        self.config_change = True
+        self.config_change = False
         return config
 
     def keep_alive(self):
@@ -211,7 +211,7 @@ def main():
     """
 
     rospy.init_node('oculus node')
-    rospy.loginfo("Starting sonar image to oculus node...")
+    rospy.loginfo("Starting sonar oculus node...")
     # rate = rospy.Rate(10)
     # rospy.sleep(3.0)
 
@@ -227,15 +227,26 @@ def main():
 
     while True:
 
+        masterMode = rospy.get_param('/oculus_dynamic_reconfig/masterMode', 2)
+        pingRate = rospy.get_param('/oculus_dynamic_reconfig/pingRate', 0)
+        range_m = rospy.get_param('/oculus_dynamic_reconfig/range_m', 4)
+        gamma = rospy.get_param('/oculus_dynamic_reconfig/gamma', 100)
+        gain = rospy.get_param('/oculus_dynamic_reconfig/gain', 50)
+        vos = rospy.get_param('/oculus_dynamic_reconfig/vOfSound', 0)
+        salinity = rospy.get_param('/oculus_dynamic_reconfig/salinity', 0)
+        # print(" range: ", range_m)
+
         # Change fire message if dynamic reconfig triggered
-        if sonar.config_change:
-            fire_message = sonar.build_simplefire_msg(sonar.config)
+        # if sonar.config_change:
+        fire_message = sonar.build_simplefire_msg(sonar.config, masterMode=masterMode, pingRate=pingRate,
+                            gamma=gamma, gain=gain, range_m=range_m,
+                             vos=vos, salinity=salinity)
 
         # Send fire message
         sonar.send_tcp_msg(fire_message)
         data = sonar.recv_tcp_msg()
-        # print("main: data shape")
-        # print data.shape()
+        rospy.loginfo(sonar.recv_tcp_msg())
+
 
         # Disregard if dummy message is sent
         if len(data) < 100:
@@ -249,7 +260,7 @@ def main():
         # Process, publish, clean, repeat.
         sonar.process_n_publish(data)
         data = ''
-
+        rospy.sleep(.01)
 
 
 if __name__ == "__main__":
